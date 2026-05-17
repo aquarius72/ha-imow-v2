@@ -121,7 +121,6 @@ class ImowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
             result[str(mower_id)] = merged
             self.mowers[str(mower_id)] = merged
-            _LOGGER.debug("Mower %s keys: %s", mower_id, list(merged.keys()))
 
         return result
 
