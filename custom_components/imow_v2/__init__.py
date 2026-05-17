@@ -58,6 +58,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         scan_interval,
         entry.data["username"],
         entry.data["password"],
+        entry,
     )
 
     await coordinator.async_config_entry_first_refresh()

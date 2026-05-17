@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import secrets
 import time
 from urllib.parse import parse_qs, quote, urlencode, urlparse
 
@@ -76,6 +77,7 @@ class ImowAuth:
         path-case-sensitivity issues (B2C uses lowercase path in step 1 but
         mixed-case in step 2, which breaks Python's RFC-6265 path matching).
         """
+        self._state = secrets.token_urlsafe(16)
         # ── Step 1: capture cookies with a jar ───────────────────────────
         jar = aiohttp.CookieJar(unsafe=True)
         async with aiohttp.ClientSession(cookie_jar=jar) as s1:
@@ -137,7 +139,7 @@ class ImowAuth:
             "response_mode": "query",
             "redirect_uri": B2C_REDIRECT_URI,
             "client_id": B2C_CLIENT_ID,
-            "state": "ACdOTeZS0KKrvWX8bPvhJ1WrncQUbvAJzpufx1swubg",
+            "state": self._state,
         }
         async with s.get(
             B2C_AUTHORIZE_URL,
@@ -231,6 +233,8 @@ class ImowAuth:
 
         parsed = urlparse(location)
         qs = parse_qs(parsed.query)
+        if "state" in qs and qs["state"][0] != self._state:
+            raise ImowAuthError("B2C redirect state mismatch")
         if "code" in qs:
             return qs["code"][0]
         if "error" in qs:

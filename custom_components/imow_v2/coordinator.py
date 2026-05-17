@@ -5,6 +5,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
@@ -26,6 +27,7 @@ class ImowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         scan_interval_minutes: int,
         username: str,
         password: str,
+        entry: ConfigEntry,
     ) -> None:
         super().__init__(
             hass,
@@ -37,6 +39,7 @@ class ImowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._api = api
         self._username = username
         self._password = password
+        self._entry = entry
         # mower_id → full merged data dict
         self.mowers: dict[str, dict[str, Any]] = {}
 
@@ -120,14 +123,24 @@ class ImowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         try:
             await self._auth.refresh()
             _LOGGER.debug("Token refreshed successfully")
+            self._persist_auth_tokens()
             return
         except Exception as err:
             _LOGGER.warning("Token refresh failed (%s), attempting full re-login", err)
         try:
             await self._auth.login(self._username, self._password)
             _LOGGER.info("Re-login successful")
+            self._persist_auth_tokens()
         except ImowAuthError as err:
             raise UpdateFailed(f"Re-authentication failed: {err}") from err
+
+    def _persist_auth_tokens(self) -> None:
+        rt = self._auth.refresh_token
+        if rt and rt != self._entry.data.get("refresh_token"):
+            self.hass.config_entries.async_update_entry(
+                self._entry,
+                data={**self._entry.data, "refresh_token": rt},
+            )
 
     @staticmethod
     def _compute_next_start(plan: dict, mower: dict) -> str | None:
