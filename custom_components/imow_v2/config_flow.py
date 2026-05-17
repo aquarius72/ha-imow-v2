@@ -43,8 +43,6 @@ class ImowConfigFlow(ConfigFlow, domain=DOMAIN):
             self._abort_if_unique_id_configured()
 
             try:
-                import logging as _logging
-                _logging.getLogger("custom_components.imow_v2").setLevel(_logging.DEBUG)
                 session = async_get_clientsession(self.hass)
                 auth = ImowAuth(session)
                 await auth.login(username, password)

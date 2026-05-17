@@ -1,6 +1,7 @@
 """STIHL iMow REST API client."""
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 
@@ -102,6 +103,10 @@ class ImowApi:
             if resp.status >= 400:
                 text = await resp.text()
                 raise ImowApiError(f"POST {url} → {resp.status}: {text[:200]}")
-            if resp.content_length:
-                return await resp.json(content_type=None)
+            text = await resp.text()
+            if text.strip():
+                try:
+                    return json.loads(text)
+                except Exception:
+                    pass
             return None

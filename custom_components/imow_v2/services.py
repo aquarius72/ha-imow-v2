@@ -61,30 +61,38 @@ INTENT_SCHEMA = vol.All(
 async def async_setup_services(hass, entry) -> None:
     """Register iMow services."""
 
+    if hass.services.has_service(DOMAIN, "intent"):
+        return
+
     async def _intent(service_call):
-        await _handle_intent(hass, entry, service_call)
+        await _handle_intent(hass, service_call)
 
     hass.services.async_register(DOMAIN, "intent", _intent, schema=INTENT_SCHEMA)
 
 
-async def _handle_intent(hass, entry, service_call) -> None:
+async def _handle_intent(hass, service_call) -> None:
     data = service_call.data
     action_raw = data["action"]
     cmd = _ACTION_MAP[action_raw]
 
-    # Resolve mower ID from device or name
-    mower_id = await _resolve_mower_id(hass, entry, data)
+    mower_id = await _resolve_mower_id(hass, data)
 
-    coordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator = None
+    for coord in hass.data[DOMAIN].values():
+        if mower_id in coord.data:
+            coordinator = coord
+            break
+    if coordinator is None:
+        raise HomeAssistantError(f"Mower '{mower_id}' is not available from any loaded iMow config entry")
+
     api: ImowApi = coordinator._api
     auth: ImowAuth = coordinator._auth
 
     payload: dict = {}
     if cmd in ("start-mowing", "startMowingFromPoint"):
-        # Resolve duration: explicit call arg → number entity → device default
         default_dur = 10800
         try:
-            coord_data = list(coordinator.data.values())[0]
+            coord_data = coordinator.data.get(mower_id, {})
             device_name = coord_data.get("_deviceName", "").lower().replace(" ", "_")
             entity_id = f"number.{device_name}_default_mowing_duration"
             state = hass.states.get(entity_id)
@@ -95,12 +103,10 @@ async def _handle_intent(hass, entry, service_call) -> None:
         except Exception:
             pass
         duration = int(data.get("duration", default_dur))
-        if cmd in ("start-mowing", "startMowingFromPoint"):
-            payload = {"durationInSeconds": duration}
-            if cmd == "startMowingFromPoint" and "startpoint" in data:
-                payload["mowingZoneId"] = int(data["startpoint"])
-            # Both use the start-mowing endpoint
-            cmd = "start-mowing"
+        payload = {"durationInSeconds": duration}
+        if cmd == "startMowingFromPoint" and "startpoint" in data:
+            payload["mowingZoneId"] = int(data["startpoint"])
+        cmd = "start-mowing"
 
     try:
         await api.send_command(mower_id, cmd, payload)
@@ -114,31 +120,33 @@ async def _handle_intent(hass, entry, service_call) -> None:
     _LOGGER.info("iMow intent '%s' sent to mower %s", cmd, mower_id)
 
 
-async def _resolve_mower_id(hass, entry, data: dict) -> str:
-    coordinator = hass.data[DOMAIN][entry.entry_id]
-    mower_ids = list(coordinator.data.keys())
+async def _resolve_mower_id(hass, data: dict) -> str:
+    domain_data = hass.data.get(DOMAIN, {})
 
-    # By device registry ID
+    all_ids: set[str] = set()
+    for coordinator in domain_data.values():
+        all_ids.update(coordinator.data.keys())
+
     if "mower_device" in data:
         registry = dr.async_get(hass)
         device = registry.async_get(data["mower_device"])
         if device:
             for domain, identifier in device.identifiers:
-                if domain == DOMAIN and identifier in mower_ids:
+                if domain == DOMAIN and identifier in all_ids:
                     return identifier
         raise HomeAssistantError(f"Device '{data['mower_device']}' not found in iMow devices")
 
-    # By friendly name
     name_query = data["mower_name"].lower()
-    for mid, mdata in coordinator.data.items():
-        dev_name = (mdata.get("_deviceName") or "").lower()
-        if name_query in dev_name:
-            return mid
+    for coordinator in domain_data.values():
+        for mid, mdata in coordinator.data.items():
+            dev_name = (mdata.get("_deviceName") or "").lower()
+            if name_query in dev_name:
+                return mid
 
-    # Fall back to first mower if only one
-    if len(mower_ids) == 1:
-        return mower_ids[0]
+    if len(all_ids) == 1:
+        return next(iter(all_ids))
 
+    mower_ids = list(all_ids)
     raise HomeAssistantError(
         f"Could not find mower matching '{data.get('mower_name')}'. "
         f"Available mowers: {mower_ids}"
