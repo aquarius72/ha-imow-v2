@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 
+import aiohttp
 import voluptuous as vol
 from homeassistant.const import Platform
 from homeassistant.exceptions import HomeAssistantError
@@ -109,13 +110,14 @@ async def _handle_intent(hass, service_call) -> None:
                     default_dur = int(coord_data.get("_defaultDuration", 10800))
             else:
                 default_dur = int(coord_data.get("_defaultDuration", 10800))
-        except Exception:
-            pass
+        except (TypeError, ValueError):
+            default_dur = int(
+                coordinator.data.get(mower_id, {}).get("_defaultDuration", 10800)
+            )
         duration = int(data.get("duration", default_dur))
         payload = {"durationInSeconds": duration}
         if cmd == "startMowingFromPoint" and "startpoint" in data:
             payload["mowingZoneId"] = int(data["startpoint"])
-        cmd = "start-mowing"
 
     try:
         await api.send_command(mower_id, cmd, payload)
@@ -134,10 +136,12 @@ async def _handle_intent(hass, service_call) -> None:
                 raise HomeAssistantError(f"Re-authentication failed: {err}") from err
         try:
             await api.send_command(mower_id, cmd, payload)
-        except ImowApiError as err:
+        except (ImowApiError, ImowAuthError) as err:
             raise HomeAssistantError(f"iMow command failed: {err}") from err
     except ImowApiError as err:
         raise HomeAssistantError(f"iMow command failed: {err}") from err
+    except aiohttp.ClientError as err:
+        raise HomeAssistantError(f"iMow network error: {err}") from err
 
     await coordinator.async_request_refresh()
     _LOGGER.info("iMow intent '%s' sent to mower %s", cmd, mower_id)
@@ -160,11 +164,21 @@ async def _resolve_mower_id(hass, data: dict) -> str:
         raise HomeAssistantError(f"Device '{data['mower_device']}' not found in iMow devices")
 
     name_query = data["mower_name"].lower()
+    name_matches: list[str] = []
     for coordinator in domain_data.values():
         for mid, mdata in coordinator.data.items():
             dev_name = (mdata.get("_deviceName") or "").lower()
             if name_query in dev_name:
-                return mid
+                name_matches.append(mid)
+    name_matches = list(dict.fromkeys(name_matches))
+
+    if len(name_matches) == 1:
+        return name_matches[0]
+    if len(name_matches) > 1:
+        raise HomeAssistantError(
+            f"Mower name '{data.get('mower_name')}' matches multiple iMow devices {name_matches}; "
+            "use mower_device to disambiguate."
+        )
 
     if len(all_ids) == 1:
         return next(iter(all_ids))

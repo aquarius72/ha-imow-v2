@@ -49,6 +49,10 @@
         "startpoint": {
           "name": "Start point",
           "description": "Zone / start-point index for the startMowingFromPoint action."
+        },
+        "duration": {
+          "name": "Duration",
+          "description": "Mowing duration in seconds for start-mowing / startMowingFromPoint (optional; uses the mower default if omitted)."
         }
       }
     }

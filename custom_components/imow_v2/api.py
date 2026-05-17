@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+from json import JSONDecodeError
 from typing import Any
 
 import aiohttp
@@ -83,13 +84,23 @@ class ImowApi:
 
     async def _get(self, url: str) -> Any:
         headers = {**_COMMON_HEADERS, "Authorization": f"Bearer {self._auth.access_token}"}
-        async with self._session.get(url, headers=headers) as resp:
-            if resp.status == 401:
-                raise ImowAuthError("401 from API — token expired")
-            if resp.status >= 400:
+        try:
+            async with self._session.get(url, headers=headers) as resp:
                 text = await resp.text()
-                raise ImowApiError(f"GET {url} → {resp.status}: {text[:200]}")
-            return await resp.json(content_type=None)
+                if resp.status == 401:
+                    raise ImowAuthError("401 from API — token expired")
+                if resp.status >= 400:
+                    raise ImowApiError(f"GET {url} → {resp.status}: {text[:200]}")
+                if not text.strip():
+                    return None
+                try:
+                    return json.loads(text)
+                except JSONDecodeError as err:
+                    raise ImowApiError(
+                        f"GET {url}: invalid JSON response: {text[:200]}"
+                    ) from err
+        except aiohttp.ClientError as err:
+            raise ImowApiError(f"GET {url}: network error: {err}") from err
 
     async def _post(self, url: str, payload: dict) -> Any:
         headers = {
@@ -97,16 +108,19 @@ class ImowApi:
             "Authorization": f"Bearer {self._auth.access_token}",
             "Content-Type": "application/json",
         }
-        async with self._session.post(url, json=payload, headers=headers) as resp:
-            if resp.status == 401:
-                raise ImowAuthError("401 from API — token expired")
-            if resp.status >= 400:
+        try:
+            async with self._session.post(url, json=payload, headers=headers) as resp:
+                if resp.status == 401:
+                    raise ImowAuthError("401 from API — token expired")
+                if resp.status >= 400:
+                    text = await resp.text()
+                    raise ImowApiError(f"POST {url} → {resp.status}: {text[:200]}")
                 text = await resp.text()
-                raise ImowApiError(f"POST {url} → {resp.status}: {text[:200]}")
-            text = await resp.text()
-            if text.strip():
-                try:
-                    return json.loads(text)
-                except Exception:
-                    pass
-            return None
+                if text.strip():
+                    try:
+                        return json.loads(text)
+                    except JSONDecodeError:
+                        pass
+                return None
+        except aiohttp.ClientError as err:
+            raise ImowApiError(f"POST {url}: network error: {err}") from err

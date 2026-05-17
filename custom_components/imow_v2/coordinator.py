@@ -58,7 +58,7 @@ class ImowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await self._try_refresh_and_retry()
             try:
                 mowers = await self._api.get_mowers()
-            except ImowApiError as err:
+            except (ImowApiError, ImowAuthError) as err:
                 raise UpdateFailed(str(err)) from err
         except ImowApiError as err:
             raise UpdateFailed(str(err)) from err
@@ -79,7 +79,7 @@ class ImowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     dashboard = await self._api.get_dashboard(str(mower_id))
                     plan = await self._api.get_mowing_plan(str(mower_id))
                     stats = await self._api.get_statistics(str(mower_id))
-                except ImowApiError as err:
+                except (ImowApiError, ImowAuthError) as err:
                     _LOGGER.warning(
                         "Could not fetch data for mower %s after re-auth: %s",
                         mower_id,

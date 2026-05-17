@@ -110,18 +110,30 @@ class ImowAuth:
         """Use stored refresh_token to obtain a new access_token."""
         if not self.refresh_token:
             raise ImowAuthError("No refresh token available")
-        async with self._session.post(
-            B2C_TOKEN_URL,
-            data={
-                "grant_type": "refresh_token",
-                "refresh_token": self.refresh_token,
-                "client_id": B2C_CLIENT_ID,
-            },
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
-        ) as resp:
-            data = await resp.json(content_type=None)
+        try:
+            async with self._session.post(
+                B2C_TOKEN_URL,
+                data={
+                    "grant_type": "refresh_token",
+                    "refresh_token": self.refresh_token,
+                    "client_id": B2C_CLIENT_ID,
+                },
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+            ) as resp:
+                text = await resp.text()
+                if resp.status >= 400:
+                    raise ImowAuthError(f"Token refresh failed (HTTP {resp.status})")
+                try:
+                    data = json.loads(text)
+                except json.JSONDecodeError as err:
+                    raise ImowAuthError("Token refresh failed: non-JSON response") from err
+        except aiohttp.ClientError as err:
+            raise ImowAuthError(f"Token refresh network error: {err}") from err
         if not data.get("access_token"):
-            raise ImowAuthError(f"Token refresh failed: {data}")
+            err_code = data.get("error") if isinstance(data, dict) else None
+            raise ImowAuthError(
+                f"Token refresh failed: {err_code or 'no access_token in response'}"
+            )
         self._apply_token(data)
         _LOGGER.debug("Token refreshed, expires in %ds", self.expires_in)
 
@@ -245,23 +257,34 @@ class ImowAuth:
 
     async def _step4_token(self, s: aiohttp.ClientSession, code: str) -> None:
         """Exchange auth code for access + refresh tokens."""
-        async with s.post(
-            B2C_TOKEN_URL,
-            data={
-                "code": code,
-                "code_verifier": PKCE_CODE_VERIFIER,
-                "redirect_uri": B2C_REDIRECT_URI,
-                "client_id": B2C_CLIENT_ID,
-                "grant_type": "authorization_code",
-            },
-            headers={"Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"},
-        ) as resp:
-            data = await resp.json(content_type=None)
-
-        _LOGGER.debug("step4 status=%s token_type=%s", resp.status, data.get("token_type"))
-        if not data.get("access_token"):
-            raise ImowAuthError(f"Token exchange failed: {data}")
-        self._apply_token(data)
+        try:
+            async with s.post(
+                B2C_TOKEN_URL,
+                data={
+                    "code": code,
+                    "code_verifier": PKCE_CODE_VERIFIER,
+                    "redirect_uri": B2C_REDIRECT_URI,
+                    "client_id": B2C_CLIENT_ID,
+                    "grant_type": "authorization_code",
+                },
+                headers={"Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"},
+            ) as resp:
+                text = await resp.text()
+                if resp.status >= 400:
+                    raise ImowAuthError(f"Token exchange failed (HTTP {resp.status})")
+                try:
+                    data = json.loads(text)
+                except json.JSONDecodeError as err:
+                    raise ImowAuthError("Token exchange failed: non-JSON response") from err
+                _LOGGER.debug("step4 status=%s token_type=%s", resp.status, data.get("token_type"))
+                if not data.get("access_token"):
+                    err_code = data.get("error")
+                    raise ImowAuthError(
+                        f"Token exchange failed: {err_code or 'no access_token in response'}"
+                    )
+                self._apply_token(data)
+        except aiohttp.ClientError as err:
+            raise ImowAuthError(f"Token exchange network error: {err}") from err
 
     def _apply_token(self, data: dict) -> None:
         self.access_token = data["access_token"]

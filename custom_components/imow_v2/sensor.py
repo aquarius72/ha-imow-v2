@@ -11,7 +11,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import PERCENTAGE, UnitOfLength
+from homeassistant.const import PERCENTAGE
 from datetime import datetime, timezone
 
 UNIT_SQUARE_METERS = "m²"  # UnitOfArea not in all HA versions
