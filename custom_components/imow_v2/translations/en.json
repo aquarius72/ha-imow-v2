@@ -1,0 +1,60 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "STIHL iMow v2 — Login",
+        "description": "Enter your STIHL myimow.stihl.com account credentials.",
+        "data": {
+          "username": "Email address",
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid email or password.",
+      "cannot_connect": "Could not connect to the STIHL cloud.",
+      "unknown": "An unexpected error occurred."
+    },
+    "abort": {
+      "already_configured": "This account is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "iMow Options",
+        "data": {
+          "scan_interval": "Poll interval (minutes)"
+        }
+      }
+    }
+  },
+  "services": {
+    "intent": {
+      "name": "Send command",
+      "description": "Send a command to an iMow mower.",
+      "fields": {
+        "action": {
+          "name": "Action",
+          "description": "Command to send: start-mowing, pause, resume, end-job-and-return-to-dock, toDocking, edgeMowing, startMowingFromPoint"
+        },
+        "mower_device": {
+          "name": "Mower device",
+          "description": "Device ID from the device registry (one of mower_device or mower_name required)."
+        },
+        "mower_name": {
+          "name": "Mower name",
+          "description": "Friendly name of the mower device."
+        },
+        "startpoint": {
+          "name": "Start point",
+          "description": "Zone / start-point index for the startMowingFromPoint action."
+        },
+        "duration": {
+          "name": "Duration",
+          "description": "Mowing duration in seconds for start-mowing / startMowingFromPoint (optional; uses the mower default if omitted)."
+        }
+      }
+    }
+  }
+}
