@@ -13,9 +13,11 @@ from __future__ import annotations
 import logging
 
 import voluptuous as vol
+from homeassistant.const import Platform
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 
 from .api import ImowApi, ImowApiError
 from .auth import ImowAuth, ImowAuthError
@@ -93,11 +95,18 @@ async def _handle_intent(hass, service_call) -> None:
         default_dur = 10800
         try:
             coord_data = coordinator.data.get(mower_id, {})
-            device_name = coord_data.get("_deviceName", "").lower().replace(" ", "_")
-            entity_id = f"number.{device_name}_default_mowing_duration"
-            state = hass.states.get(entity_id)
-            if state and state.state not in (None, "unknown", "unavailable"):
-                default_dur = int(float(state.state) * 60)
+            entity_reg = er.async_get(hass)
+            entity_id = entity_reg.async_get_entity_id(
+                Platform.NUMBER,
+                DOMAIN,
+                f"{mower_id}_default_mowing_duration",
+            )
+            if entity_id:
+                state = hass.states.get(entity_id)
+                if state and state.state not in (None, "unknown", "unavailable"):
+                    default_dur = int(float(state.state) * 60)
+                else:
+                    default_dur = int(coord_data.get("_defaultDuration", 10800))
             else:
                 default_dur = int(coord_data.get("_defaultDuration", 10800))
         except Exception:

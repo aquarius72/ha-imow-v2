@@ -91,7 +91,7 @@ SENSOR_DESCRIPTIONS: tuple[ImowSensorDescription, ...] = (
         name="Error Code",
         icon="mdi:lightning-bolt-outline",
         value_path=("device", "errorsActive"),
-        transform=lambda v: v[0] if v else None,
+        transform=lambda v: v[0] if isinstance(v, list) and v else None,
     ),
     # ── Battery ─────────────────────────────────────────────────────────
     ImowSensorDescription(
