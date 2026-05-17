@@ -63,7 +63,12 @@ class ImowTrackerEntity(CoordinatorEntity[ImowCoordinator], TrackerEntity):
         mower = self.coordinator.data.get(self._mower_id, {})
         gps = mower.get("gps") or {}
         acc = gps.get("accuracy") or gps.get("Accuracy")
-        return int(acc) if acc is not None else 10
+        if acc is None:
+            return 10
+        try:
+            return int(acc)
+        except (TypeError, ValueError):
+            return 0
 
     def _get_gps(self, *keys: str) -> float | None:
         mower = self.coordinator.data.get(self._mower_id, {})

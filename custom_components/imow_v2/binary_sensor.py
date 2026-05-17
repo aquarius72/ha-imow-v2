@@ -71,9 +71,7 @@ async def async_setup_entry(
     for mower_id in coordinator.data:
         mower_data = coordinator.data[mower_id]
         for desc in BINARY_SENSOR_DESCRIPTIONS:
-            # Only add if the API actually returns this field
-            if _deep_get(mower_data, desc.value_path) is not None:
-                entities.append(ImowBinarySensor(coordinator, mower_id, mower_data, desc))
+            entities.append(ImowBinarySensor(coordinator, mower_id, mower_data, desc))
     async_add_entities(entities)
 
 

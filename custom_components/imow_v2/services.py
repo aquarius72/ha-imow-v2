@@ -111,8 +111,22 @@ async def _handle_intent(hass, service_call) -> None:
     try:
         await api.send_command(mower_id, cmd, payload)
     except ImowAuthError:
-        await auth.refresh()
-        await api.send_command(mower_id, cmd, payload)
+        try:
+            await auth.refresh()
+            _LOGGER.debug("Token refreshed after auth error in intent")
+            coordinator._persist_auth_tokens()
+        except Exception as err:
+            _LOGGER.warning("Token refresh failed (%s), attempting full re-login", err)
+            try:
+                await auth.login(coordinator._username, coordinator._password)
+                _LOGGER.info("Re-login successful for intent")
+                coordinator._persist_auth_tokens()
+            except ImowAuthError as err:
+                raise HomeAssistantError(f"Re-authentication failed: {err}") from err
+        try:
+            await api.send_command(mower_id, cmd, payload)
+        except ImowApiError as err:
+            raise HomeAssistantError(f"iMow command failed: {err}") from err
     except ImowApiError as err:
         raise HomeAssistantError(f"iMow command failed: {err}") from err
 
