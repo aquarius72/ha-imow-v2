@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import logging
 
+import aiohttp
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .auth import ImowAuth, ImowAuthError
@@ -30,15 +32,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     auth = ImowAuth(session)
 
     # Restore tokens from stored data (no full login needed on restart)
-    if entry.data.get("refresh_token"):
-        auth.refresh_token = entry.data["refresh_token"]
-        try:
-            await auth.refresh()
-        except ImowAuthError:
-            _LOGGER.warning("Token refresh failed, falling back to full login")
+    try:
+        if entry.data.get("refresh_token"):
+            auth.refresh_token = entry.data["refresh_token"]
+            try:
+                await auth.refresh()
+            except ImowAuthError:
+                _LOGGER.warning("Token refresh failed, falling back to full login")
+                await auth.login(entry.data["username"], entry.data["password"])
+        else:
             await auth.login(entry.data["username"], entry.data["password"])
-    else:
-        await auth.login(entry.data["username"], entry.data["password"])
+    except ImowAuthError as err:
+        raise ConfigEntryNotReady(f"Could not authenticate with STIHL cloud: {err}") from err
+    except aiohttp.ClientError as err:
+        raise ConfigEntryNotReady(f"Network not ready: {err}") from err
 
     # Persist refreshed tokens
     if auth.refresh_token and auth.refresh_token != entry.data.get("refresh_token"):
@@ -59,7 +66,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry,
     )
 
-    await coordinator.async_config_entry_first_refresh()
+    try:
+        await coordinator.async_config_entry_first_refresh()
+    except Exception as err:
+        raise ConfigEntryNotReady(f"First data fetch failed: {err}") from err
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
 
