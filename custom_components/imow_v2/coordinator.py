@@ -49,6 +49,18 @@ class ImowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch latest data for every mower."""
+        try:
+            return await self._fetch_all()
+        except UpdateFailed as err:
+            if self.data:
+                _LOGGER.warning(
+                    "iMow update failed (%s) — keeping last known state", err
+                )
+                return self.data
+            raise
+
+    async def _fetch_all(self) -> dict[str, Any]:
+        """Inner fetch — raises UpdateFailed on any unrecoverable error."""
         if self._auth.token_needs_refresh:
             _LOGGER.debug("Proactively refreshing token before poll")
             await self._try_refresh_and_retry()
