@@ -153,13 +153,16 @@ class ImowAuth:
             "client_id": B2C_CLIENT_ID,
             "state": self._state,
         }
-        async with s.get(
-            B2C_AUTHORIZE_URL,
-            params=params,
-            headers={"User-Agent": USER_AGENT, "Accept": "text/html,*/*"},
-            allow_redirects=True,
-        ) as resp:
-            text = await resp.text()
+        try:
+            async with s.get(
+                B2C_AUTHORIZE_URL,
+                params=params,
+                headers={"User-Agent": USER_AGENT, "Accept": "text/html,*/*"},
+                allow_redirects=True,
+            ) as resp:
+                text = await resp.text()
+        except aiohttp.ClientError as err:
+            raise ImowAuthError(f"B2C authorize network error: {err}") from err
 
         _LOGGER.debug("step1 status=%s", resp.status)
         m = re.search(r"var SETTINGS\s*=\s*(\{[\s\S]*?\});\s*\n", text)
@@ -194,10 +197,13 @@ class ImowAuth:
         if cookie_header:
             headers["Cookie"] = cookie_header
 
-        async with s.post(url, data=form_body, headers=headers) as resp:
-            raw = await resp.text()
-            # Capture any cookies B2C updates in this response
-            step2_cookies = {k: v.value for k, v in resp.cookies.items()}
+        try:
+            async with s.post(url, data=form_body, headers=headers) as resp:
+                raw = await resp.text()
+                # Capture any cookies B2C updates in this response
+                step2_cookies = {k: v.value for k, v in resp.cookies.items()}
+        except aiohttp.ClientError as err:
+            raise ImowAuthError(f"B2C SelfAsserted network error: {err}") from err
 
         _LOGGER.debug("step2 status=%s content-type=%s body=%s new_cookies=%s",
                       resp.status, resp.content_type, raw[:300], list(step2_cookies.keys()))
@@ -236,9 +242,12 @@ class ImowAuth:
         headers = {"User-Agent": USER_AGENT}
         if cookie_header:
             headers["Cookie"] = cookie_header
-        async with s.get(url, params=params, headers=headers, allow_redirects=False) as resp:
-            location = resp.headers.get("Location", "")
-            _LOGGER.debug("step3 status=%s location=%s", resp.status, location[:100] if location else "")
+        try:
+            async with s.get(url, params=params, headers=headers, allow_redirects=False) as resp:
+                location = resp.headers.get("Location", "")
+                _LOGGER.debug("step3 status=%s location=%s", resp.status, location[:100] if location else "")
+        except aiohttp.ClientError as err:
+            raise ImowAuthError(f"B2C confirmed network error: {err}") from err
 
         if not location:
             raise ImowAuthError("B2C confirmed: no Location header in response")

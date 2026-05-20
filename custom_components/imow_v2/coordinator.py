@@ -52,7 +52,7 @@ class ImowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         try:
             return await self._fetch_all()
         except UpdateFailed as err:
-            if self.data:
+            if self.data is not None:
                 _LOGGER.warning(
                     "iMow update failed (%s) — keeping last known state", err
                 )
