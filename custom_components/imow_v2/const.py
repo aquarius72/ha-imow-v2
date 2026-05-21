@@ -17,7 +17,7 @@ B2C_SCOPE           = "offline_access https://login.stihl.com/scopes/profile ope
 APIM_KEY            = "52659909060946fc88f2d3368c16d9c7"
 API_BASE            = "https://apim.stihl.cloud"
 API_MOWERS          = f"{API_BASE}/imow/p/mowertwin/api/v1/mowers"
-API_DASHBOARD       = f"{API_BASE}/imow/p/mowertwin/api/v1/dashboard-status/{{id}}?force-status-update-mode=force"
+API_DASHBOARD       = f"{API_BASE}/imow/p/mowertwin/api/v1/dashboard-status/{{id}}"
 API_MOWING_PLAN     = f"{API_BASE}/imow/p/mowertwin/api/v1/mowing-plans/{{id}}"
 API_WEATHER         = f"{API_BASE}/imow/p/api/v1/weather/daily/{{id}}"
 API_SIGNALR_NEG     = f"{API_BASE}/imow/p/signalr/api/v1/negotiate?negotiateVersion=1"

@@ -21,6 +21,8 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+_REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=30)
+
 _COMMON_HEADERS = {
     "Ocp-Apim-Subscription-Key": APIM_KEY,
     "Accept": "application/json",
@@ -85,7 +87,7 @@ class ImowApi:
     async def _get(self, url: str) -> Any:
         headers = {**_COMMON_HEADERS, "Authorization": f"Bearer {self._auth.access_token}"}
         try:
-            async with self._session.get(url, headers=headers) as resp:
+            async with self._session.get(url, headers=headers, timeout=_REQUEST_TIMEOUT) as resp:
                 text = await resp.text()
                 if resp.status == 401:
                     raise ImowAuthError("401 from API — token expired")
@@ -109,7 +111,7 @@ class ImowApi:
             "Content-Type": "application/json",
         }
         try:
-            async with self._session.post(url, json=payload, headers=headers) as resp:
+            async with self._session.post(url, json=payload, headers=headers, timeout=_REQUEST_TIMEOUT) as resp:
                 if resp.status == 401:
                     raise ImowAuthError("401 from API — token expired")
                 if resp.status >= 400:
