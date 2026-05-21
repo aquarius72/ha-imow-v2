@@ -15,6 +15,36 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
+# Job states where the mower is (or is about to be) actively working.
+_ACTIVE_JOB_STATES = frozenset({
+    "plannedJobRunning",
+    "mowing",
+    "manualMowing",
+    "edgeMowing",
+    "returning",
+    "paused",
+})
+
+# Cached overallState values that often lag behind an active job.
+_STALE_OVERALL_STATES = frozenset({
+    "charging",
+    "docked",
+    "parked",
+    "idle",
+})
+
+# Job states that imply the mower has left the dock (isDocked often lags in the cloud twin).
+_UNDOCKED_JOB_STATES = frozenset({
+    "plannedJobRunning",
+    "manualJobRunning",
+    "mowing",
+    "manualMowing",
+    "edgeMowing",
+    "returning",
+    "drivingToZone",
+    "paused",
+})
+
 
 class ImowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Fetches data for all mowers and computes derived fields."""
@@ -123,6 +153,8 @@ class ImowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             merged["_plan"] = plan
             merged["_nextStart"] = self._compute_next_start(plan, merged)
             merged["_defaultDuration"] = max(int(merged.get("setting", {}).get("defaultManualMowingDuration", 10800) or 10800), 10800)
+            self._resolve_overall_state(merged)
+            self._resolve_docked(merged)
             if stats:
                 merged["statistics"] = stats
             # Resolve device display name: nickname > type > fallback
@@ -163,6 +195,45 @@ class ImowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self._entry,
                 data={**self._entry.data, "refresh_token": rt},
             )
+
+    @staticmethod
+    def _resolve_overall_state(mower: dict) -> None:
+        """Align device.overallState with job when the cloud twin is inconsistent.
+
+        STIHL often returns job.state=plannedJobRunning while device.overallState
+        still says charging (especially on cached dashboard data without force-update).
+        """
+        job_state = (mower.get("job") or {}).get("state")
+        if job_state not in _ACTIVE_JOB_STATES:
+            return
+
+        device = mower.setdefault("device", {})
+        overall = dict(device.get("overallState") or {})
+        raw_state = overall.get("state")
+        is_docked = device.get("isDocked")
+
+        # isDocked often lags while the mower is already mowing — trust job state.
+        if raw_state in _STALE_OVERALL_STATES:
+            _LOGGER.debug(
+                "Correcting stale overallState %s -> mowing (job=%s, isDocked=%s)",
+                raw_state,
+                job_state,
+                is_docked,
+            )
+            overall["state"] = "mowing"
+
+        device["overallState"] = overall
+
+    @staticmethod
+    def _resolve_docked(mower: dict) -> None:
+        """Clear stale isDocked when job state shows the mower is working."""
+        job_state = (mower.get("job") or {}).get("state")
+        if job_state not in _UNDOCKED_JOB_STATES:
+            return
+        device = mower.setdefault("device", {})
+        if device.get("isDocked"):
+            _LOGGER.debug("Correcting stale isDocked -> False (job=%s)", job_state)
+            device["isDocked"] = False
 
     @staticmethod
     def _compute_next_start(plan: dict, mower: dict) -> str | None:
